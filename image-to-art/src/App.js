@@ -2,14 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Download, RotateCcw, ImageIcon } from 'lucide-react';
 
 export default function ImageToPainting() {
-  const [originalImage, setOriginalImage] = useState(null);
-  const [processedImage, setProcessedImage] = useState(null);
-  const [filterType, setFilterType] = useState('cartoon');
-  const [grayLevel, setGrayLevel] = useState(128);
-  const [edgeStrength, setEdgeStrength] = useState(50);
-  const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
+  // === State quản lý ảnh ===
+  const [originalImage, setOriginalImage] = useState(null); // ảnh gốc người dùng tải lên
+  const [processedImage, setProcessedImage] = useState(null); // ảnh đã áp dụng hiệu ứng
+  const [filterType, setFilterType] = useState('cartoon'); // kiểu hiệu ứng (cartoon, pencil, watercolor, edge)
+  const [grayLevel, setGrayLevel] = useState(128); // ngưỡng xám cho viền cạnh
+  const [edgeStrength, setEdgeStrength] = useState(50); // độ mạnh biên (dùng cho cartoon)
+  const canvasRef = useRef(null); // canvas ẩn để xử lý ảnh
+  const fileInputRef = useRef(null); // ref để reset input file
 
+  // === Hàm xử lý tải ảnh lên ===
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -18,7 +20,7 @@ export default function ImageToPainting() {
         const img = new Image();
         img.onload = () => {
           setOriginalImage(img);
-          applyFilter(img, filterType);
+          applyFilter(img, filterType); // tự động áp dụng hiệu ứng ngay khi tải ảnh
         };
         img.src = event.target.result;
       };
@@ -26,11 +28,13 @@ export default function ImageToPainting() {
     }
   };
 
+  // === Hàm lọc bilateral để làm mịn (như yêu cầu) ===
   const applyBilateralFilter = (imageData, d = 9, sigmaColor = 75, sigmaSpace = 75) => {
     const { width, height, data } = imageData;
     const output = new Uint8ClampedArray(data);
     const radius = Math.floor(d / 2);
 
+    // duyệt từng pixel
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         let rSum = 0, gSum = 0, bSum = 0, wSum = 0;
@@ -47,8 +51,8 @@ export default function ImageToPainting() {
 
             const spaceDist = dx * dx + dy * dy;
             const colorDist = Math.pow(data[nIdx] - centerR, 2) +
-                            Math.pow(data[nIdx + 1] - centerG, 2) +
-                            Math.pow(data[nIdx + 2] - centerB, 2);
+                              Math.pow(data[nIdx + 1] - centerG, 2) +
+                              Math.pow(data[nIdx + 2] - centerB, 2);
 
             const spaceWeight = Math.exp(-spaceDist / (2 * sigmaSpace * sigmaSpace));
             const colorWeight = Math.exp(-colorDist / (2 * sigmaColor * sigmaColor));
@@ -70,10 +74,12 @@ export default function ImageToPainting() {
     return new ImageData(output, width, height);
   };
 
+  // === Hàm phát hiện biên (dùng Sobel operator) ===
   const detectEdges = (imageData) => {
     const { width, height, data } = imageData;
     const gray = new Uint8ClampedArray(width * height);
     
+    // chuyển ảnh sang grayscale
     for (let i = 0; i < data.length; i += 4) {
       gray[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     }
@@ -94,17 +100,19 @@ export default function ImageToPainting() {
           }
         }
         
-        edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+        edges[y * width + x] = Math.sqrt(gx * gx + gy * gy); // magnitude gradient
       }
     }
 
-    return edges;
+    return edges; // trả về mảng biên
   };
 
+  // === Hàm áp dụng hiệu ứng theo kiểu filterType ===
   const applyFilter = (img, type) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
+    // resize ảnh nếu quá lớn
     const maxWidth = 800;
     const maxHeight = 600;
     let width = img.width;
@@ -121,29 +129,32 @@ export default function ImageToPainting() {
     ctx.drawImage(img, 0, 0, width, height);
     
     let imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
 
+    // === Hiệu ứng Cartoon: làm mịn + viền biên ===
     if (type === 'cartoon') {
-      imageData = applyBilateralFilter(imageData, 9, 75, 75);
-      const edges = detectEdges(imageData);
+      imageData = applyBilateralFilter(imageData, 9, 75, 75); // làm mịn
+      const edges = detectEdges(imageData); // phát hiện biên
       
       for (let i = 0; i < imageData.data.length; i += 4) {
         const edgeIdx = i / 4;
-        if (edges[edgeIdx] > edgeStrength) {
+        if (edges[edgeIdx] > edgeStrength) { // vẽ viền đen
           imageData.data[i] = 0;
           imageData.data[i + 1] = 0;
           imageData.data[i + 2] = 0;
         }
       }
+
+    // === Hiệu ứng Pencil (vẽ chì) ===
     } else if (type === 'pencil') {
-      const gray = new Uint8ClampedArray(data.length / 4);
-      for (let i = 0; i < data.length; i += 4) {
-        gray[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      const gray = new Uint8ClampedArray(imageData.data.length / 4);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        gray[i / 4] = 0.299 * imageData.data[i] + 0.587 * imageData.data[i + 1] + 0.114 * imageData.data[i + 2];
       }
 
-      const inverted = gray.map(v => 255 - v);
+      const inverted = gray.map(v => 255 - v); // đảo màu
       const blurred = new Uint8ClampedArray(inverted.length);
       
+      // Gaussian blur đơn giản
       for (let y = 2; y < height - 2; y++) {
         for (let x = 2; x < width - 2; x++) {
           let sum = 0;
@@ -156,28 +167,34 @@ export default function ImageToPainting() {
         }
       }
 
-      for (let i = 0; i < data.length; i += 4) {
+      // áp dụng hiệu ứng vẽ chì
+      for (let i = 0; i < imageData.data.length; i += 4) {
         const idx = i / 4;
         const value = Math.min(255, (gray[idx] * 256) / (256 - blurred[idx]));
         imageData.data[i] = value;
         imageData.data[i + 1] = value;
         imageData.data[i + 2] = value;
       }
+
+    // === Hiệu ứng Watercolor (màu nước) ===
     } else if (type === 'watercolor') {
-      imageData = applyBilateralFilter(imageData, 15, 100, 100);
+      imageData = applyBilateralFilter(imageData, 15, 100, 100); // làm mịn mạnh
       
+      // giảm số mức màu để tạo hiệu ứng màu nước
       for (let i = 0; i < imageData.data.length; i += 4) {
         imageData.data[i] = Math.floor(imageData.data[i] / 20) * 20;
         imageData.data[i + 1] = Math.floor(imageData.data[i + 1] / 20) * 20;
         imageData.data[i + 2] = Math.floor(imageData.data[i + 2] / 20) * 20;
       }
+
+    // === Hiệu ứng Edge (phát hiện viền) ===
     } else if (type === 'edge') {
       const edges = detectEdges(imageData);
-      const threshold = grayLevel;
+      const threshold = grayLevel; // ngưỡng xám người dùng chọn
       
       for (let i = 0; i < imageData.data.length; i += 4) {
         const edgeIdx = i / 4;
-        const value = edges[edgeIdx] > threshold ? 0 : 255;
+        const value = edges[edgeIdx] > threshold ? 0 : 255; // biên đen, nền trắng
         imageData.data[i] = value;
         imageData.data[i + 1] = value;
         imageData.data[i + 2] = value;
@@ -185,15 +202,17 @@ export default function ImageToPainting() {
     }
 
     ctx.putImageData(imageData, 0, 0);
-    setProcessedImage(canvas.toDataURL());
+    setProcessedImage(canvas.toDataURL()); // cập nhật ảnh đã xử lý
   };
 
+  // === Cập nhật hiệu ứng khi filterType hoặc slider thay đổi ===
   useEffect(() => {
     if (originalImage) {
       applyFilter(originalImage, filterType);
     }
   }, [filterType, grayLevel, edgeStrength]);
 
+  // === Tải ảnh xuống ===
   const handleDownload = () => {
     if (processedImage) {
       const link = document.createElement('a');
@@ -203,12 +222,14 @@ export default function ImageToPainting() {
     }
   };
 
+  // === Reset ảnh ===
   const handleReset = () => {
     setOriginalImage(null);
     setProcessedImage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // === JSX hiển thị giao diện ===
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 p-8">
       <div className="max-w-6xl mx-auto">
@@ -217,6 +238,7 @@ export default function ImageToPainting() {
             Chuyển Ảnh Thành Tranh Vẽ
           </h1>
 
+          {/* Upload ảnh */}
           <div className="mb-8">
             <input
               ref={fileInputRef}
@@ -235,32 +257,34 @@ export default function ImageToPainting() {
             </label>
           </div>
 
+          {/* Hiển thị các lựa chọn hiệu ứng */}
           {originalImage && (
             <>
               <div className="mb-6 p-6 bg-gray-50 rounded-xl">
                 <h3 className="text-lg font-semibold mb-4 text-gray-800">Chọn Hiệu Ứng Tranh Vẽ</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                  {[
-                    { value: 'cartoon', label: 'Phim Hoạt Hình', icon: '🎨' },
+                  {[{ value: 'cartoon', label: 'Phim Hoạt Hình', icon: '🎨' },
                     { value: 'pencil', label: 'Vẽ Chì', icon: '✏️' },
                     { value: 'watercolor', label: 'Màu Nước', icon: '🖌️' },
-                    { value: 'edge', label: 'Viền Cạnh', icon: '🖼️' }
-                  ].map(filter => (
-                    <button
-                      key={filter.value}
-                      onClick={() => setFilterType(filter.value)}
-                      className={`p-4 rounded-lg transition-all ${
-                        filterType === filter.value
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg scale-105'
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200'
-                      }`}
-                    >
-                      <div className="text-2xl mb-1">{filter.icon}</div>
-                      <div className="text-sm font-medium">{filter.label}</div>
-                    </button>
-                  ))}
+                    { value: 'edge', label: 'Viền Cạnh', icon: '🖼️' }]
+                    .map(filter => (
+                      <button
+                        key={filter.value}
+                        onClick={() => setFilterType(filter.value)}
+                        className={`p-4 rounded-lg transition-all ${
+                          filterType === filter.value
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg scale-105'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200'
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">{filter.icon}</div>
+                        <div className="text-sm font-medium">{filter.label}</div>
+                      </button>
+                    ))
+                  }
                 </div>
 
+                {/* Slider điều chỉnh ngưỡng xám (Edge) */}
                 {filterType === 'edge' && (
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -277,6 +301,7 @@ export default function ImageToPainting() {
                   </div>
                 )}
 
+                {/* Slider điều chỉnh độ mạnh biên (Cartoon) */}
                 {filterType === 'cartoon' && (
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -294,6 +319,7 @@ export default function ImageToPainting() {
                 )}
               </div>
 
+              {/* Hiển thị ảnh gốc và ảnh đã xử lý */}
               <div className="grid md:grid-cols-2 gap-6 mb-6">
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <h3 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
@@ -312,6 +338,7 @@ export default function ImageToPainting() {
                 </div>
               </div>
 
+              {/* Button tải xuống và reset */}
               <div className="flex justify-center gap-4">
                 <button
                   onClick={handleDownload}
@@ -320,17 +347,10 @@ export default function ImageToPainting() {
                   <Download size={20} />
                   Tải Xuống
                 </button>
-                <button
-                  onClick={handleReset}
-                  className="flex items-center gap-2 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-all shadow-md"
-                >
-                  <RotateCcw size={20} />
-                  Làm Mới
-                </button>
               </div>
             </>
           )}
-
+          {/* Canvas ẩn để xử lý ảnh */}
           <canvas ref={canvasRef} className="hidden" />
         </div>
       </div>
