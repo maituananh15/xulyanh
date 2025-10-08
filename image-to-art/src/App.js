@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Download, RotateCcw, ImageIcon } from 'lucide-react';
+import { Upload, Download, ImageIcon } from 'lucide-react';
 
 export default function ImageToPainting() {
   // === State quản lý ảnh ===
@@ -210,6 +210,7 @@ export default function ImageToPainting() {
     if (originalImage) {
       applyFilter(originalImage, filterType);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterType, grayLevel, edgeStrength]);
 
   // === Tải ảnh xuống ===
@@ -220,13 +221,6 @@ export default function ImageToPainting() {
       link.href = processedImage;
       link.click();
     }
-  };
-
-  // === Reset ảnh ===
-  const handleReset = () => {
-    setOriginalImage(null);
-    setProcessedImage(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // === JSX hiển thị giao diện ===
